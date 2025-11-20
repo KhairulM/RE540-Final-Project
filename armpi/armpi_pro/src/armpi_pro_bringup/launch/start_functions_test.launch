@@ -1,0 +1,15 @@
+<launch>
+
+  <node name="chassis_control" pkg="chassis_control" type="chassis_control_node.py" required="true" output="screen" />
+  <node name="manipulator_control" pkg="chassis_control" type="manipulator_control_node.py" required="true" output="screen" />
+  <!-- <node name="visual_processing" pkg="visual_processing" type="visual_processing_node.py" required="true" output="screen" /> -->
+
+  <!-- <node name="face_detect" pkg="face_detect" type="face_detect_node.py" required="true" output="screen" /> -->
+  <!-- <node name="visual_patrol" pkg="visual_patrol" type="visual_patrol_node.py" required="true" output="screen" /> -->
+  <!-- <node name="color_tracking" pkg="color_tracking" type="color_tracking_node.py" required="true" output="screen" /> -->
+  <!-- <node name="apriltag_detect" pkg="apriltag_detect" type="apriltag_detect_node.py" required="true" output="screen" /> -->
+<!--     <rosparam file="$(find hiwonder_servo_tutorial)/config/hiwonder_servo_controller.yaml" command="load" ns="hiwonder_servo_manager"/> -->
+    <include file="$(find hiwonder_servo_controllers)/launch/controller_manager.launch"/>
+    <include file="$(find hiwonder_servo_controllers)/launch/joint_states_publisher.launch"/>
+
+</launch>
