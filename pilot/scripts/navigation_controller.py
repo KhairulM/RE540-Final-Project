@@ -64,17 +64,6 @@ class NavigationController:
                          target_x, yaw_error)
             return twist, True
         
-        # Yaw control (turn to face target)
-        if abs(yaw_error) > self.yaw_tolerance:
-            wz = -self.Kp_yaw * yaw_error
-            
-            # Clamp angular speed
-            wz = max(min(wz, self.max_angular_speed), -self.max_angular_speed)
-            
-            twist.angular.z = wz
-            rospy.loginfo("[NavigationController] Yaw error: %.3f rad, angular vel: %.3f", 
-                         yaw_error, wz)
-        
         # Distance control (forward/backward)
         if abs(distance_error) > self.distance_tolerance:
             v = self.Kp_distance * distance_error
@@ -83,8 +72,23 @@ class NavigationController:
             v = max(min(v, self.max_linear_speed), -self.max_linear_speed)
             
             twist.linear.x = v
-            rospy.loginfo("[NavigationController] Distance error: %.3f m, linear vel: %.3f", 
-                         distance_error, v)
+            rospy.loginfo("[NavigationController] Current distance: %.3f m, Distance error: %.3f m, linear vel: %.3f", 
+                         current_distance, distance_error, v)
+            
+            # If distance error is negative (too close), only move backward without yaw control
+            if distance_error < 0:
+                return twist, False
+        
+        # Yaw control (turn to face target) - only when not backing up
+        if abs(yaw_error) > self.yaw_tolerance:
+            wz = self.Kp_yaw * yaw_error
+            
+            # Clamp angular speed
+            wz = max(min(wz, self.max_angular_speed), -self.max_angular_speed)
+            
+            twist.angular.z = wz
+            rospy.loginfo("[NavigationController] Yaw error: %.3f rad, angular vel: %.3f", 
+                         yaw_error, wz)
         
         return twist, False
     

@@ -5,14 +5,14 @@
         output="screen">
     <param name="detection_topic" value="/yolo_node/detections" />
     <param name="cmd_vel_topic" value="/cmd_vel" />
-    <param name="target_distance" value="0.25" />
+    <param name="target_distance" value="0.21" />
     <param name="distance_tolerance" value="0.03" />
-    <param name="yaw_tolerance" value="0.1" />
-    <param name="max_linear_speed" value="0.2" />
+    <param name="yaw_tolerance" value="0.08" />
+    <param name="max_linear_speed" value="0.3" />
     <param name="max_angular_speed" value="0.3" />
     <param name="rate" value="20.0" />
 
-    <param name="Kp_distance" value="1.0" />
+    <param name="Kp_distance" value="2.0" />
     <param name="Kp_yaw" value="0.05" />
 
     <param name="detection_class" value="drug" />

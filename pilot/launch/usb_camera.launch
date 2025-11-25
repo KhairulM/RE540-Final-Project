@@ -1,0 +1,31 @@
+<launch>
+  <!-- USB Camera Publisher Launch File -->
+  
+  <!-- Camera parameters -->
+  <arg name="device_id"      default="0" doc="Video device ID (e.g., 0 for /dev/video0)" />
+  <arg name="frame_id"       default="usb_camera_link" doc="TF frame for camera" />
+  <arg name="camera_name"    default="usb_camera" doc="Camera namespace" />
+  <arg name="width"          default="640" doc="Image width" />
+  <arg name="height"         default="480" doc="Image height" />
+  <arg name="fps"            default="30" doc="Frames per second" />
+  <arg name="publish_rate"   default="30.0" doc="Publishing rate" />
+  
+  <!-- Launch the USB camera publisher node -->
+  <node name="$(arg camera_name)" pkg="pilot" type="usb_camera_publisher.py" output="screen">
+    <param name="device_id"     value="$(arg device_id)" />
+    <param name="frame_id"      value="$(arg frame_id)" />
+    <param name="camera_name"   value="$(arg camera_name)" />
+    <param name="width"         value="$(arg width)" />
+    <param name="height"        value="$(arg height)" />
+    <param name="fps"           value="$(arg fps)" />
+    <param name="publish_rate"  value="$(arg publish_rate)" />
+  </node>
+  
+  <!-- Optional: Static TF transform from base_link to camera -->
+  <!-- Adjust the transform values based on your robot's camera position -->
+  <!--
+  <node pkg="tf" type="static_transform_publisher" name="base_to_usb_camera_broadcaster" 
+        args="0.1 0.0 0.15 0 0 0 base_link usb_camera_link 100" />
+  -->
+  
+</launch>
