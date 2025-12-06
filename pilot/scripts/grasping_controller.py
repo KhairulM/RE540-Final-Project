@@ -39,7 +39,7 @@ class GraspingController:
                  (4, servo_data['servo4']), (5, servo_data['servo5']), 
                  (6, servo_data['servo6']))
             )
-            rospy.sleep(1.5)
+            rospy.sleep(2.0)
             self.is_initialized = True
             rospy.loginfo("[GraspingController] Arm initialized at home position")
             return True
@@ -77,7 +77,7 @@ class GraspingController:
                  (4, servo_data['servo4']), (5, servo_data['servo5']), 
                  (6, servo_data['servo6']))
             )
-            rospy.sleep(1.5)
+            rospy.sleep(2.0)
             return True
         else:
             rospy.logwarn("[GraspingController] Failed to compute IK for approach position")
@@ -128,7 +128,7 @@ class GraspingController:
             self.joints_pub, 1500, 
             ((1, 700), (2, 500), (3, 900), (4, 365), (5, 460), (6, 500))
         )
-        rospy.sleep(1.5)
+        rospy.sleep(2.0)
     
     def place_object(self):
         """Open gripper to release object in basket."""
@@ -137,7 +137,7 @@ class GraspingController:
             self.joints_pub, 1500, 
             ((1, 200), (2, 500), (3, 900), (4, 365), (5, 460), (6, 500))
         )
-        rospy.sleep(1.5)
+        rospy.sleep(2.0)
         rospy.loginfo("[GraspingController] Object placed")
     
     def execute_full_sequence(self, target_x, target_y, target_z):
