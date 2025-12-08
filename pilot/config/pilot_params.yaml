@@ -1,0 +1,39 @@
+# Pilot Package Configuration Parameters
+
+# LLM Agent Parameters
+llm_agent:
+  model: "gpt-4o-mini"
+  default_temperature: 0.7
+  default_max_tokens: 500
+  enable_history: true
+  max_history: 20
+  summary_trigger: 10
+  default_system_message: "You are a helpful AI assistant for a mobile robot with long-term memory."
+
+# Semantic Map Builder Parameters
+semantic_map_builder:
+  camera_topic: "/camera/rgb/image_raw"
+  identification_prompt: "You are a store identification system for a shopping robot. Look at this store front image and identify what type of store it is. Respond with ONLY the store type in 1-3 words (e.g., 'grocery store', 'electronics', 'clothing', 'pharmacy', etc.). Be specific but concise."
+
+# State Handler Parameters
+state_handler:
+  rate: 10.0
+
+# Pilot Node Parameters (Object Detection & Manipulation)
+pilot_node:
+  detection_topic: "/yolo_node/detections"
+  cmd_vel_topic: "/cmd_vel"
+  target_distance: 0.21
+  distance_tolerance: 0.03
+  yaw_tolerance: 0.08
+  max_linear_speed: 0.3
+  max_angular_speed: 0.3
+  rate: 20.0
+  Kp_distance: 2.0
+  Kp_yaw: 0.05
+  detection_class: "drug"
+  image_width: 640
+  camera_frame: "camera_link"
+  base_frame: "base_link"
+  x_offset: 0.02
+  z_offset: -0.03

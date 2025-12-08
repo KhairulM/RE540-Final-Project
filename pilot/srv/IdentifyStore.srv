@@ -1,0 +1,11 @@
+# IdentifyStore.srv
+# Service to identify store type from camera image
+
+# Request
+string store_name    # Name/ID of the store to identify
+
+---
+# Response
+bool success
+string store_type
+string message

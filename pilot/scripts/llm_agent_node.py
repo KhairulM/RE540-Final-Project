@@ -3,12 +3,22 @@ import rospy
 import os
 import json
 import time
+import base64
 from openai import OpenAI
+from pydantic import BaseModel
+from typing import Literal, Optional
 from pilot.srv import ChatCompletion, ChatCompletionResponse
 
 # History management constants
 MAX_HISTORY = 20        # Maximum conversation turns to keep in memory
 SUMMARY_TRIGGER = 10    # Trigger summary after this many turns
+
+# Structured output models
+class StoreIdentification(BaseModel):
+    """Structured output for store type identification."""
+    store_type: Literal["cafe", "pharmacy", "convenience store", "restaurant", "unknown"]
+    confidence: Literal["high", "medium", "low"]
+    reasoning: str
 
 
 class LLMAgentNode:
@@ -41,6 +51,7 @@ class LLMAgentNode:
         self.enable_history = rospy.get_param("~enable_history", True)
         self.max_history = rospy.get_param("~max_history", MAX_HISTORY)
         self.summary_trigger = rospy.get_param("~summary_trigger", SUMMARY_TRIGGER)
+        self.use_structured_output = rospy.get_param("~use_structured_output", False)
         
         # Initialize history management
         self.turn_history = []
@@ -98,6 +109,36 @@ class LLMAgentNode:
         
         rospy.loginfo("[LLMAgent] History directory: %s", self.history_dir)
     
+    def _encode_image(self, image_path):
+        """Encode image to base64 string."""
+        try:
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        except Exception as e:
+            rospy.logerr("[LLMAgent] Failed to encode image: %s", str(e))
+            raise
+    
+    def _read_text_file(self, file_path):
+        """Read text file content."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            rospy.logerr("[LLMAgent] Failed to read text file: %s", str(e))
+            raise
+    
+    def _get_image_mime_type(self, file_path):
+        """Determine image MIME type from file extension."""
+        ext = os.path.splitext(file_path)[1].lower()
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        }
+        return mime_types.get(ext, 'image/jpeg')
+    
     def _save_entry(self, role, content):
         """Save a conversation entry to history."""
         if not self.enable_history:
@@ -117,8 +158,8 @@ class LLMAgentNode:
         except Exception as e:
             rospy.logwarn("[LLMAgent] Failed to write history: %s", str(e))
     
-    def _build_messages(self, user_prompt, system_message):
-        """Build message list with history and summary."""
+    def _build_messages(self, user_prompt, system_message, image_content=None, text_file_content=None):
+        """Build message list with history, summary, and multimodal content."""
         messages = [{"role": "system", "content": system_message}]
         
         # Add summary memory if available
@@ -136,8 +177,31 @@ class LLMAgentNode:
                     "content": entry["content"]
                 })
         
-        # Add current user prompt
-        messages.append({"role": "user", "content": user_prompt})
+        # Build user message with multimodal content
+        user_message = {"role": "user", "content": []}
+        
+        # Add text file content first if provided
+        if text_file_content:
+            user_message["content"].append({
+                "type": "text",
+                "text": f"[ATTACHED TEXT FILE CONTENT]\n{text_file_content}\n\n"
+            })
+        
+        # Add main prompt
+        user_message["content"].append({
+            "type": "text",
+            "text": user_prompt
+        })
+        
+        # Add image if provided
+        if image_content:
+            user_message["content"].append(image_content)
+        
+        # If only text (no multimodal), simplify the structure
+        if not image_content and not text_file_content:
+            user_message["content"] = user_prompt
+        
+        messages.append(user_message)
         
         return messages
     
@@ -220,28 +284,104 @@ class LLMAgentNode:
             max_tokens = req.max_tokens if req.max_tokens > 0 else self.default_max_tokens
             system_message = req.system_message if req.system_message else self.default_system_message
             
+            # Process multimodal inputs
+            image_content = None
+            text_file_content = None
+            model_to_use = self.model
+            
+            # Handle text file
+            if req.text_file_path:
+                rospy.loginfo("[LLMAgent] Loading text file: %s", req.text_file_path)
+                if not os.path.exists(req.text_file_path):
+                    response.success = False
+                    response.error_message = f"Text file not found: {req.text_file_path}"
+                    rospy.logwarn("[LLMAgent] %s", response.error_message)
+                    return response
+                text_file_content = self._read_text_file(req.text_file_path)
+                rospy.loginfo("[LLMAgent] Text file loaded (%d chars)", len(text_file_content))
+            
+            # Handle image (path or URL)
+            if req.image_path or req.image_url:
+                # Switch to vision model if needed
+                if req.use_vision_model or "gpt-4o" not in model_to_use:
+                    model_to_use = "gpt-4o"
+                    rospy.loginfo("[LLMAgent] Switching to vision model: %s", model_to_use)
+                
+                if req.image_path:
+                    rospy.loginfo("[LLMAgent] Loading image: %s", req.image_path)
+                    if not os.path.exists(req.image_path):
+                        response.success = False
+                        response.error_message = f"Image file not found: {req.image_path}"
+                        rospy.logwarn("[LLMAgent] %s", response.error_message)
+                        return response
+                    
+                    # Encode image to base64
+                    base64_image = self._encode_image(req.image_path)
+                    mime_type = self._get_image_mime_type(req.image_path)
+                    
+                    image_content = {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{base64_image}"
+                        }
+                    }
+                    rospy.loginfo("[LLMAgent] Image encoded successfully")
+                
+                elif req.image_url:
+                    rospy.loginfo("[LLMAgent] Using image URL: %s", req.image_url)
+                    image_content = {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": req.image_url
+                        }
+                    }
+            
             # Log request
             rospy.loginfo("[LLMAgent] Processing chat request:")
+            rospy.loginfo("[LLMAgent]   Model: %s", model_to_use)
             rospy.loginfo("[LLMAgent]   Prompt: %s", req.prompt[:100] + "..." if len(req.prompt) > 100 else req.prompt)
             rospy.loginfo("[LLMAgent]   Temperature: %.2f", temperature)
             rospy.loginfo("[LLMAgent]   Max tokens: %d", max_tokens)
+            rospy.loginfo("[LLMAgent]   Has image: %s", bool(image_content))
+            rospy.loginfo("[LLMAgent]   Has text file: %s", bool(text_file_content))
             if self.enable_history:
                 rospy.loginfo("[LLMAgent]   History size: %d turns", len(self.turn_history))
                 rospy.loginfo("[LLMAgent]   Has summary: %s", bool(self.summary_memory))
             
-            # Prepare messages with history
-            messages = self._build_messages(req.prompt, system_message)
+            # Prepare messages with history and multimodal content
+            messages = self._build_messages(req.prompt, system_message, image_content, text_file_content)
+            
+            # Determine if we should use structured output
+            use_structured = self.use_structured_output or "store" in req.prompt.lower()
             
             # Call OpenAI API
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            
-            # Extract response
-            ai_response = completion.choices[0].message.content
+            if use_structured and image_content:
+                rospy.loginfo("[LLMAgent] Using structured output (StoreIdentification)")
+                completion = self.client.beta.chat.completions.parse(
+                    model=model_to_use,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format=StoreIdentification
+                )
+                
+                # Extract structured response
+                parsed = completion.choices[0].message.parsed
+                ai_response = json.dumps({
+                    "store_type": parsed.store_type,
+                    "confidence": parsed.confidence,
+                    "reasoning": parsed.reasoning
+                }, indent=2)
+            else:
+                completion = self.client.chat.completions.create(
+                    model=model_to_use,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                
+                # Extract response
+                ai_response = completion.choices[0].message.content
             
             # Save to history
             if self.enable_history:

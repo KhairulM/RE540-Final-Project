@@ -1,24 +1,96 @@
+<?xml version="1.0"?>
 <launch>
-  <node pkg="pilot"
-        type="pilot_node.py"
-        name="pilot_node"
-        output="screen">
-    <param name="detection_topic" value="/yolo_node/detections" />
-    <param name="cmd_vel_topic" value="/cmd_vel" />
-    <param name="target_distance" value="0.21" />
-    <param name="distance_tolerance" value="0.03" />
-    <param name="yaw_tolerance" value="0.08" />
-    <param name="max_linear_speed" value="0.3" />
-    <param name="max_angular_speed" value="0.3" />
-    <param name="rate" value="20.0" />
+    <!-- Arguments -->
+    <arg name="use_llm" default="true" doc="Enable LLM agent node"/>
+    <arg name="use_semantic_map" default="true" doc="Enable semantic map builder"/>
+    <arg name="use_state_handler" default="false" doc="Enable state handler node"/>
+    <arg name="use_pilot" default="false" doc="Enable pilot node for object manipulation"/>
+    <arg name="use_store_markers" default="true" doc="Enable store marker visualization"/>
+    
+    <arg name="camera_topic" default="/camera/rgb/image_raw" doc="RGB camera topic"/>
+    <arg name="semantic_map_file" default="$(find pilot)/config/semantic_map.yaml" doc="Path to semantic map YAML file"/>
+    <arg name="store_coordinates_file" default="/home/khairulm/re540/assignment5/assignment5_ws/src/re540_final_map/config/store_coordinates.txt" doc="Path to store coordinates file"/>
+    <arg name="marker_frame" default="map" doc="Frame ID for store markers"/>
+    
+    <!-- LLM Agent Configuration -->
+    <arg name="llm_model" default="gpt-4o-mini" doc="OpenAI model to use"/>
+    <arg name="llm_temperature" default="0.7" doc="LLM temperature parameter"/>
+    <arg name="llm_max_tokens" default="500" doc="Maximum tokens for LLM response"/>
+    <arg name="enable_history" default="true" doc="Enable conversation history"/>
+    
+    <!-- Load parameters from yaml file -->
+    <rosparam command="load" file="$(find pilot)/config/pilot_params.yaml" />
+    
+    <!-- LLM Agent Node -->
+    <node if="$(arg use_llm)" 
+          pkg="pilot" 
+          type="llm_agent_node.py" 
+          name="llm_agent" 
+          output="screen"
+          required="false">
+        <param name="model" value="$(arg llm_model)"/>
+        <param name="default_temperature" value="$(arg llm_temperature)"/>
+        <param name="default_max_tokens" value="$(arg llm_max_tokens)"/>
+        <param name="enable_history" value="$(arg enable_history)"/>
+    </node>
+    
+    <!-- Semantic Map Builder Node -->
+    <node if="$(arg use_semantic_map)" 
+          pkg="pilot" 
+          type="semantic_map_builder_node.py" 
+          name="semantic_map_builder" 
+          output="screen"
+          required="false">
+        <param name="camera_topic" value="$(arg camera_topic)"/>
+        <param name="semantic_map_file" value="$(arg semantic_map_file)"/>
+    </node>
+    
+    <!-- State Handler Node -->
+    <node if="$(arg use_state_handler)" 
+          pkg="pilot" 
+          type="state_handler_node.py" 
+          name="state_handler" 
+          output="screen"
+          required="false">
+        <param name="rate" value="10.0"/>
+    </node>
 
-    <param name="Kp_distance" value="2.0" />
-    <param name="Kp_yaw" value="0.05" />
+    <!-- Pilot Node (Object Detection & Manipulation) -->
+    <node if="$(arg use_pilot)"
+          pkg="pilot"
+          type="pilot_node.py"
+          name="pilot_node"
+          output="screen"
+          required="false">
+        <param name="detection_topic" value="/yolo_node/detections" />
+        <param name="cmd_vel_topic" value="/cmd_vel" />
+        <param name="target_distance" value="0.21" />
+        <param name="distance_tolerance" value="0.03" />
+        <param name="yaw_tolerance" value="0.08" />
+        <param name="max_linear_speed" value="0.3" />
+        <param name="max_angular_speed" value="0.3" />
+        <param name="rate" value="20.0" />
+        <param name="Kp_distance" value="2.0" />
+        <param name="Kp_yaw" value="0.05" />
+        <param name="detection_class" value="drug" />
+        <param name="image_width" value="640" />
+    </node>
 
-    <param name="detection_class" value="drug" />
-
-    <!-- set this true if you want it to rotate to face the cup using cx -->
-    <!-- <param name="use_yaw_control" value="false" /> -->
-    <param name="image_width" value="640" />
-  </node>
+    <!-- Store Marker Publisher Node -->
+    <node if="$(arg use_store_markers)"
+          pkg="pilot"
+          type="store_marker_publisher_node.py"
+          name="store_marker_publisher"
+          output="screen"
+          required="false">
+        <param name="store_coordinates_file" value="$(arg store_coordinates_file)"/>
+        <param name="frame_id" value="$(arg marker_frame)"/>
+        <param name="marker_scale" value="0.3"/>
+        <param name="marker_height" value="0.5"/>
+        <param name="publish_rate" value="1.0"/>
+    </node>
+    
+    <node pkg="rviz" type="rviz" name="rviz" 
+          args="-d $(find pilot)/rviz/pilot.rviz" 
+          if="false"/>
 </launch>
