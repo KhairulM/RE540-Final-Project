@@ -16,16 +16,8 @@
 # Searching -> Navigating (Go to the next store, if any. If no more stores, go to the drop-off point)
 
 import rospy
-from enum import Enum
-from std_msgs.msg import String
-
-class State(Enum):
-    IDLING = 1
-    EXPLORING = 2
-    PLANNING = 3
-    NAVIGATING = 4
-    SEARCHING = 5
-    GRASPING = 6
+from pilot.msg import PilotState
+from pilot.srv import SetPilotState, SetPilotStateResponse
     
 class StateHandlerNode:
     def __init__(self):
@@ -33,54 +25,85 @@ class StateHandlerNode:
         rospy.init_node('state_handler_node', anonymous=False)
         
         # Initialize state
-        self.current_state = State.IDLING
+        self.current_state = PilotState.IDLING
+        
+        # State name mapping
+        self.state_names = {
+            PilotState.IDLING: "IDLING",
+            PilotState.EXPLORING: "EXPLORING",
+            PilotState.PLANNING: "PLANNING",
+            PilotState.NAVIGATING: "NAVIGATING",
+            PilotState.SEARCHING: "SEARCHING",
+            PilotState.GRASPING: "GRASPING"
+        }
         
         # Publishers
-        self.current_state_publisher = rospy.Publisher('/robot_state', String, queue_size=10)
+        self.current_state_publisher = rospy.Publisher('/robot_state', PilotState, queue_size=10)
         
-        # Subscribers
-        self.set_state_subscriber = rospy.Subscriber('/set_robot_state', String, self.set_state_callback)
+        # Services
+        self.set_state_service = rospy.Service('/set_robot_state', SetPilotState, self.set_state_callback)
         
         # Publish rate
         self.rate_hz = rospy.get_param("~rate", 10.0)
         self.rate = rospy.Rate(self.rate_hz)
         
-        rospy.loginfo("[StateHandler] State handler node initialized in %s state", self.current_state.name)
+        rospy.loginfo("[StateHandler] State handler node initialized in %s state", 
+                     self.state_names[self.current_state])
         
     def publish_state(self):
         """Publish the current state."""
-        state_str = self.current_state.name
-        self.current_state_publisher.publish(state_str)
+        msg = PilotState()
+        msg.state = self.current_state
+        msg.state_name = self.state_names[self.current_state]
+        self.current_state_publisher.publish(msg)
         
-    def set_state_callback(self, msg):
-        """Callback for setting new state via topic."""
-        try:
-            new_state_name = msg.data.upper()
-            new_state = State[new_state_name]
-            self.set_state(new_state)
-        except KeyError:
-            rospy.logwarn("[StateHandler] Invalid state name: %s", msg.data)
+    def set_state_callback(self, req):
+        """Service callback for setting new state."""
+        response = SetPilotStateResponse()
+        
+        # Validate state value
+        if req.state not in self.state_names:
+            response.success = False
+            response.message = "Invalid state value: {}".format(req.state)
+            rospy.logwarn("[StateHandler] %s", response.message)
+            return response
+        
+        # Attempt to set state
+        success = self.set_state(req.state)
+        
+        if success:
+            response.success = True
+            response.message = "State changed to {}".format(self.state_names[req.state])
+        else:
+            response.success = False
+            response.message = "Invalid state transition: {} -> {}".format(
+                self.state_names[self.current_state], 
+                self.state_names[req.state]
+            )
+        
+        return response
         
     def set_state(self, new_state):
         """Set a new state with validation and logging."""
-        if not isinstance(new_state, State):
-            rospy.logwarn("[StateHandler] Invalid state type")
+        if new_state not in self.state_names:
+            rospy.logwarn("[StateHandler] Invalid state value: %d", new_state)
             return False
             
         if self.current_state == new_state:
-            rospy.logdebug("[StateHandler] Already in state: %s", new_state.name)
+            rospy.logdebug("[StateHandler] Already in state: %s", self.state_names[new_state])
             return True
             
         # Validate state transition
         if self.is_valid_transition(self.current_state, new_state):
             old_state = self.current_state
             self.current_state = new_state
-            rospy.loginfo("[StateHandler] State transition: %s -> %s", old_state.name, new_state.name)
+            rospy.loginfo("[StateHandler] State transition: %s -> %s", 
+                         self.state_names[old_state], self.state_names[new_state])
             self.publish_state()
             return True
         else:
             rospy.logwarn("[StateHandler] Invalid state transition: %s -> %s", 
-                         self.current_state.name, new_state.name)
+                         self.state_names[self.current_state], self.state_names[new_state])
             return False
     
     def is_valid_transition(self, from_state, to_state):
@@ -98,16 +121,16 @@ class StateHandlerNode:
         - Any state -> IDLING (emergency stop/reset)
         """
         valid_transitions = {
-            State.IDLING: [State.EXPLORING],
-            State.EXPLORING: [State.PLANNING, State.IDLING],
-            State.PLANNING: [State.NAVIGATING, State.IDLING],
-            State.NAVIGATING: [State.SEARCHING, State.IDLING],
-            State.SEARCHING: [State.GRASPING, State.NAVIGATING, State.IDLING],
-            State.GRASPING: [State.SEARCHING, State.NAVIGATING, State.IDLING]
+            PilotState.IDLING: [PilotState.EXPLORING],
+            PilotState.EXPLORING: [PilotState.PLANNING, PilotState.IDLING],
+            PilotState.PLANNING: [PilotState.NAVIGATING, PilotState.IDLING],
+            PilotState.NAVIGATING: [PilotState.SEARCHING, PilotState.IDLING],
+            PilotState.SEARCHING: [PilotState.GRASPING, PilotState.NAVIGATING, PilotState.IDLING],
+            PilotState.GRASPING: [PilotState.SEARCHING, PilotState.NAVIGATING, PilotState.IDLING]
         }
         
         # Allow any state to transition to IDLING (emergency stop)
-        if to_state == State.IDLING:
+        if to_state == PilotState.IDLING:
             return True
             
         return to_state in valid_transitions.get(from_state, [])

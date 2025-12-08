@@ -1,0 +1,14 @@
+# ChatCompletion.srv
+# Service for OpenAI chat completion
+
+# Request
+string prompt
+string system_message  # Optional system message for context
+float32 temperature    # Optional, default 0.7
+int32 max_tokens       # Optional, default 500
+
+---
+# Response
+bool success
+string response
+string error_message
