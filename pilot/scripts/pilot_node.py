@@ -11,9 +11,7 @@ from hiwonder_servo_msgs.msg import MultiRawIdPosDur
 from yolo.msg import YoloDetections
 
 # Import controllers
-from navigation_controller import NavigationController
-from grasping_controller import GraspingController
-
+from controllers import NavigationController, GraspingController
 
 
 class PilotNode:

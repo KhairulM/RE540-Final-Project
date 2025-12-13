@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # States:
 # 1. Idling (Nothing to do)
 # 2. Exploring (Go around the environment, build a semantic map)
@@ -16,8 +18,8 @@
 # Searching -> Navigating (Go to the next store, if any. If no more stores, go to the drop-off point)
 
 import rospy
-from pilot.msg import PilotState
-from pilot.srv import SetPilotState, SetPilotStateResponse
+from pilot.msg import RobotState
+from pilot.srv import SetRobotState, SetRobotStateResponse
     
 class StateHandlerNode:
     def __init__(self):
@@ -25,23 +27,23 @@ class StateHandlerNode:
         rospy.init_node('state_handler_node', anonymous=False)
         
         # Initialize state
-        self.current_state = PilotState.IDLING
+        self.current_state = RobotState.IDLING
         
         # State name mapping
         self.state_names = {
-            PilotState.IDLING: "IDLING",
-            PilotState.EXPLORING: "EXPLORING",
-            PilotState.PLANNING: "PLANNING",
-            PilotState.NAVIGATING: "NAVIGATING",
-            PilotState.SEARCHING: "SEARCHING",
-            PilotState.GRASPING: "GRASPING"
+            RobotState.IDLING: "IDLING",
+            RobotState.EXPLORING: "EXPLORING",
+            RobotState.PLANNING: "PLANNING",
+            RobotState.NAVIGATING: "NAVIGATING",
+            RobotState.SEARCHING: "SEARCHING",
+            RobotState.GRASPING: "GRASPING"
         }
         
         # Publishers
-        self.current_state_publisher = rospy.Publisher('/robot_state', PilotState, queue_size=10)
+        self.current_state_publisher = rospy.Publisher('/robot_state', RobotState, queue_size=10)
         
         # Services
-        self.set_state_service = rospy.Service('/set_robot_state', SetPilotState, self.set_state_callback)
+        self.set_state_service = rospy.Service('/set_robot_state', SetRobotState, self.set_state_callback)
         
         # Publish rate
         self.rate_hz = rospy.get_param("~rate", 10.0)
@@ -52,14 +54,14 @@ class StateHandlerNode:
         
     def publish_state(self):
         """Publish the current state."""
-        msg = PilotState()
+        msg = RobotState()
         msg.state = self.current_state
         msg.state_name = self.state_names[self.current_state]
         self.current_state_publisher.publish(msg)
         
     def set_state_callback(self, req):
         """Service callback for setting new state."""
-        response = SetPilotStateResponse()
+        response = SetRobotStateResponse()
         
         # Validate state value
         if req.state not in self.state_names:
@@ -121,16 +123,16 @@ class StateHandlerNode:
         - Any state -> IDLING (emergency stop/reset)
         """
         valid_transitions = {
-            PilotState.IDLING: [PilotState.EXPLORING],
-            PilotState.EXPLORING: [PilotState.PLANNING, PilotState.IDLING],
-            PilotState.PLANNING: [PilotState.NAVIGATING, PilotState.IDLING],
-            PilotState.NAVIGATING: [PilotState.SEARCHING, PilotState.IDLING],
-            PilotState.SEARCHING: [PilotState.GRASPING, PilotState.NAVIGATING, PilotState.IDLING],
-            PilotState.GRASPING: [PilotState.SEARCHING, PilotState.NAVIGATING, PilotState.IDLING]
+            RobotState.IDLING: [RobotState.EXPLORING],
+            RobotState.EXPLORING: [RobotState.PLANNING, RobotState.IDLING],
+            RobotState.PLANNING: [RobotState.NAVIGATING, RobotState.IDLING],
+            RobotState.NAVIGATING: [RobotState.SEARCHING, RobotState.IDLING],
+            RobotState.SEARCHING: [RobotState.GRASPING, RobotState.NAVIGATING, RobotState.IDLING],
+            RobotState.GRASPING: [RobotState.SEARCHING, RobotState.NAVIGATING, RobotState.IDLING]
         }
         
         # Allow any state to transition to IDLING (emergency stop)
-        if to_state == PilotState.IDLING:
+        if to_state == RobotState.IDLING:
             return True
             
         return to_state in valid_transitions.get(from_state, [])

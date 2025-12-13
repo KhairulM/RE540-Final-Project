@@ -1,0 +1,30 @@
+<launch>
+    <arg name="use_sim_time" default="true" />
+    <arg name="tracking_frame" default="base_link" />
+    
+
+  <!-- Start Cartographer -->
+  <node pkg="cartographer_ros" type="cartographer_node" name="cartographer_node"
+        output="screen"
+        args="
+          -configuration_directory $(find pilot)/config
+          -configuration_basename cartographer.lua
+        "
+  >
+    <param name="use_sim_time" value="$(arg use_sim_time)" />
+    <param name="tracking_frame" value="$(arg tracking_frame)"/>
+    <param name="submap_publish_period_sec" value="0.5"/>
+    <param name="pose_publish_period_sec" value="5e-3"/>
+    <param name="publish_to_tf" value="true"/>
+
+    <remap from="/points2" to="/camera/depth/points"/>
+  </node>
+
+  <!-- Start the Cartographer occupancy grid node -->
+  <node pkg="cartographer_ros" type="cartographer_occupancy_grid_node"
+        name="cartographer_occupancy_grid_node" output="screen">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+    <param name="resolution" value="0.1"/>
+  </node>
+
+</launch>

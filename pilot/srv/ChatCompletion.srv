@@ -8,9 +8,9 @@ float32 temperature      # Optional, default 0.7
 int32 max_tokens         # Optional, default 500
 
 # Multimodal inputs
-string image_path        # Optional: path to image file (jpg, png, etc.)
+sensor_msgs/Image image  # Optional: ROS image message
 string text_file_path    # Optional: path to text file to include as context
-string image_url         # Optional: URL to image (alternative to image_path)
+string image_url         # Optional: URL to image (alternative to image)
 bool use_vision_model    # Optional: force vision model (gpt-4o)
 
 ---

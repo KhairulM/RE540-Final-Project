@@ -1,10 +1,10 @@
-# SetPilotState.srv
-# Service to set the pilot robot state
+# SetRobotState.srv
+# Service to set the robot state
 
 # Request
 uint8 state
 
-# State constants (must match PilotState.msg)
+# State constants (must match RobotState.msg)
 uint8 IDLING = 1
 uint8 EXPLORING = 2
 uint8 PLANNING = 3

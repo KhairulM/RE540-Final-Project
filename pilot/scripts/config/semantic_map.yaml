@@ -1,0 +1,40 @@
+store1:
+  location:
+  - 1
+  - 1.15
+  type: pharmacy
+store2:
+  location:
+  - 1.6
+  - -1
+  type: restaurant
+store3:
+  location:
+  - 1
+  - -2.35
+  type: cafe
+store4:
+  location:
+  - 0.4
+  - -1.3
+  type: pharmacy
+store5:
+  location:
+  - -0.4
+  - -0.7
+  type: cafe
+store6:
+  location:
+  - -1
+  - -2.35
+  type: convenience store
+store7:
+  location:
+  - -1.6
+  - -1
+  type: restaurant
+store8:
+  location:
+  - -1
+  - 1.15
+  type: convenience store

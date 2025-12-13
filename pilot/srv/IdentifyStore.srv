@@ -1,11 +1,18 @@
 # IdentifyStore.srv
 # Service to identify store type from camera image
 
+# Store constants
+string CAFE=cafe
+string PHARMACY=pharmacy
+string CONVENIENCE_STORE=convenience store
+string RESTAURANT=restaurant
+string UNKNOWN=unknown
 # Request
-string store_name    # Name/ID of the store to identify
+sensor_msgs/Image image  # Camera image to analyze store type
 
 ---
 # Response
 bool success
 string store_type
-string message
+string confidence
+string reasoning

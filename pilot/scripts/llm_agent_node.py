@@ -4,21 +4,23 @@ import os
 import json
 import time
 import base64
+import cv2
+import numpy as np
+from cv_bridge import CvBridge
 from openai import OpenAI
-from pydantic import BaseModel
-from typing import Literal, Optional
-from pilot.srv import ChatCompletion, ChatCompletionResponse
+
+from models import StoreIdentification
+
+from pilot.srv import (
+    ChatCompletion, 
+    ChatCompletionResponse, 
+    IdentifyStore,
+    IdentifyStoreResponse,
+)
 
 # History management constants
 MAX_HISTORY = 20        # Maximum conversation turns to keep in memory
 SUMMARY_TRIGGER = 10    # Trigger summary after this many turns
-
-# Structured output models
-class StoreIdentification(BaseModel):
-    """Structured output for store type identification."""
-    store_type: Literal["cafe", "pharmacy", "convenience store", "restaurant", "unknown"]
-    confidence: Literal["high", "medium", "low"]
-    reasoning: str
 
 
 class LLMAgentNode:
@@ -39,6 +41,9 @@ class LLMAgentNode:
         except Exception as e:
             rospy.logerr("[LLMAgent] Failed to initialize OpenAI client: %s", str(e))
             raise
+        
+        # Initialize CV Bridge for image conversion
+        self.bridge = CvBridge()
         
         # Get parameters
         self.model = rospy.get_param("~model", "gpt-4o-mini")
@@ -69,6 +74,11 @@ class LLMAgentNode:
             '/llm_chat', 
             ChatCompletion, 
             self.handle_chat_request
+        )
+        self.store_identification_srv = rospy.Service(
+            '/identify_store',
+            IdentifyStore,
+            self.handle_store_identification_request
         )
         
         rospy.loginfo("[LLMAgent] LLM Agent Node initialized.")
@@ -109,13 +119,30 @@ class LLMAgentNode:
         
         rospy.loginfo("[LLMAgent] History directory: %s", self.history_dir)
     
-    def _encode_image(self, image_path):
-        """Encode image to base64 string."""
+    def _encode_image_from_ros(self, ros_image):
+        """Encode ROS Image message to base64 string."""
+        try:
+            # Convert ROS Image to OpenCV format
+            cv_image = self.bridge.imgmsg_to_cv2(ros_image, desired_encoding='bgr8')
+            
+            # Encode to JPEG
+            success, encoded_image = cv2.imencode('.jpg', cv_image)
+            if not success:
+                raise Exception("Failed to encode image to JPEG")
+            
+            # Convert to base64
+            return base64.b64encode(encoded_image.tobytes()).decode('utf-8')
+        except Exception as e:
+            rospy.logerr("[LLMAgent] Failed to encode ROS image: %s", str(e))
+            raise
+    
+    def _encode_image_from_path(self, image_path):
+        """Encode image file to base64 string (legacy support)."""
         try:
             with open(image_path, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode('utf-8')
         except Exception as e:
-            rospy.logerr("[LLMAgent] Failed to encode image: %s", str(e))
+            rospy.logerr("[LLMAgent] Failed to encode image from path: %s", str(e))
             raise
     
     def _read_text_file(self, file_path):
@@ -300,32 +327,27 @@ class LLMAgentNode:
                 text_file_content = self._read_text_file(req.text_file_path)
                 rospy.loginfo("[LLMAgent] Text file loaded (%d chars)", len(text_file_content))
             
-            # Handle image (path or URL)
-            if req.image_path or req.image_url:
+            # Handle image (ROS Image or URL)
+            has_image = (req.image.height > 0 and req.image.width > 0) or req.image_url
+            if has_image:
                 # Switch to vision model if needed
                 if req.use_vision_model or "gpt-4o" not in model_to_use:
                     model_to_use = "gpt-4o"
                     rospy.loginfo("[LLMAgent] Switching to vision model: %s", model_to_use)
                 
-                if req.image_path:
-                    rospy.loginfo("[LLMAgent] Loading image: %s", req.image_path)
-                    if not os.path.exists(req.image_path):
-                        response.success = False
-                        response.error_message = f"Image file not found: {req.image_path}"
-                        rospy.logwarn("[LLMAgent] %s", response.error_message)
-                        return response
+                if req.image.height > 0 and req.image.width > 0:
+                    rospy.loginfo("[LLMAgent] Processing ROS Image (%dx%d)", req.image.width, req.image.height)
                     
-                    # Encode image to base64
-                    base64_image = self._encode_image(req.image_path)
-                    mime_type = self._get_image_mime_type(req.image_path)
+                    # Encode ROS image to base64
+                    base64_image = self._encode_image_from_ros(req.image)
                     
                     image_content = {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:{mime_type};base64,{base64_image}"
+                            "url": f"data:image/jpeg;base64,{base64_image}"
                         }
                     }
-                    rospy.loginfo("[LLMAgent] Image encoded successfully")
+                    rospy.loginfo("[LLMAgent] ROS Image encoded successfully")
                 
                 elif req.image_url:
                     rospy.loginfo("[LLMAgent] Using image URL: %s", req.image_url)
@@ -406,6 +428,78 @@ class LLMAgentNode:
         
         return response
 
+    def handle_store_identification_request(self, req):
+        """Handle store identification service requests."""
+        response = IdentifyStoreResponse()
+        
+        try:
+            # Validate request - check if image has valid dimensions
+            if req.image.height == 0 or req.image.width == 0:
+                response.success = False
+                response.store_type = ""
+                response.confidence = ""
+                response.reasoning = "Empty or invalid image provided"
+                rospy.logwarn("[LLMAgent] Empty image received for store identification")
+                return response
+            
+            rospy.loginfo("[LLMAgent] Processing store identification request")
+            rospy.loginfo("[LLMAgent]   Image size: %dx%d", req.image.width, req.image.height)
+            
+            # Encode ROS image to base64
+            base64_image = self._encode_image_from_ros(req.image)
+            
+            image_content = {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image}"
+                }
+            }
+            
+            # Build messages for store identification
+            system_message = "You are a store identification system for a shopping robot. Look at this store front image and determine what type of store it is. Respond with ONLY the store type in 1-3 words ('cafe', 'convenience store', 'restaurant', 'pharmacy', 'unknown'). If the image doesn't contain any store front, reply with store type 'unknown'. Be specific but concise."
+            
+            messages = [
+                {"role": "system", "content": system_message},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What type of store is this?"},
+                        image_content
+                    ]
+                }
+            ]
+            
+            # Call OpenAI API with structured output
+            rospy.loginfo("[LLMAgent] Using structured output for store identification")
+            completion = self.client.beta.chat.completions.parse(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=200,
+                response_format=StoreIdentification
+            )
+            
+            # Extract structured response
+            parsed = completion.choices[0].message.parsed
+            
+            response.success = True
+            response.store_type = parsed.store_type
+            response.confidence = parsed.confidence
+            response.reasoning = parsed.reasoning
+            
+            rospy.loginfo("[LLMAgent] Store identified: %s (confidence: %s)", 
+                         response.store_type, response.confidence)
+            rospy.logdebug("[LLMAgent] Reasoning: %s", response.reasoning)
+            
+        except Exception as e:
+            response.success = False
+            response.store_type = ""
+            response.confidence = ""
+            response.reasoning = str(e)
+            rospy.logerr("[LLMAgent] Error processing store identification: %s", str(e))
+        
+        return response
+    
     def run(self):
         """Keep the node running."""
         rospy.loginfo("[LLMAgent] Running LLM Agent...")

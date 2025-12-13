@@ -1,5 +1,5 @@
-# PilotState.msg
-# Defines the current state of the pilot robot
+# RobotState.msg
+# Defines the current state of the robot
 
 # State constants
 uint8 IDLING = 1

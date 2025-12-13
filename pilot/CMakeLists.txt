@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   rospy
   std_msgs
+  sensor_msgs
   message_generation
 )
 
@@ -50,13 +51,13 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
 add_message_files(
   FILES
-  PilotState.msg
+  RobotState.msg
 )
 
 ## Generate services in the 'srv' folder
 add_service_files(
   FILES
-  SetPilotState.srv
+  SetRobotState.srv
   ChatCompletion.srv
   IdentifyStore.srv
 )
@@ -73,6 +74,7 @@ generate_messages(
   DEPENDENCIES
   geometry_msgs
   std_msgs
+  sensor_msgs
 )
 
 ################################################

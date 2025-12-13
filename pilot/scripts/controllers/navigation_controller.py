@@ -5,7 +5,9 @@ Handles robot base navigation and target tracking.
 """
 import rospy
 import math
+import actionlib
 from geometry_msgs.msg import Twist
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
 
 class NavigationController:
@@ -29,6 +31,9 @@ class NavigationController:
         self.max_angular_speed = params.get('max_angular_speed', 0.3)
         self.Kp_distance = params.get('Kp_distance', 1.0)
         self.Kp_yaw = params.get('Kp_yaw', 0.0005)
+        
+        # Initialize move_base action client (lazy initialization)
+        self.move_base_client = None
         
         rospy.loginfo("[NavigationController] Initialized")
         rospy.loginfo("[NavigationController] Target distance: %.2f m", self.target_distance)
@@ -100,3 +105,67 @@ class NavigationController:
     def publish_command(self, twist):
         """Publish velocity command."""
         self.cmd_pub.publish(twist)
+    
+    def navigate_to_goal(self, x, y, yaw=0.0, frame_id="map", timeout=60.0):
+        """
+        Navigate to a goal position using move_base action server.
+        
+        Args:
+            x: Target x position
+            y: Target y position
+            yaw: Target yaw orientation in radians (default: 0.0)
+            frame_id: Reference frame for the goal (default: "map")
+            timeout: Maximum time to wait for navigation (default: 60.0 seconds)
+            
+        Returns:
+            bool: True if navigation succeeded, False otherwise
+        """
+        # Lazy initialization of move_base client
+        if self.move_base_client is None:
+            rospy.loginfo("[NavigationController] Initializing move_base action client...")
+            self.move_base_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+            rospy.loginfo("[NavigationController] Waiting for move_base action server...")
+            if not self.move_base_client.wait_for_server(rospy.Duration(5.0)):
+                rospy.logerr("[NavigationController] move_base action server not available!")
+                return False
+            rospy.loginfo("[NavigationController] move_base action server connected")
+        
+        # Create goal
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = frame_id
+        goal.target_pose.header.stamp = rospy.Time.now()
+        
+        # Set position
+        goal.target_pose.pose.position.x = x
+        goal.target_pose.pose.position.y = y
+        goal.target_pose.pose.position.z = 0.0
+        
+        # Set orientation from yaw angle
+        # Convert yaw to quaternion
+        goal.target_pose.pose.orientation.x = 0.0
+        goal.target_pose.pose.orientation.y = 0.0
+        goal.target_pose.pose.orientation.z = math.sin(yaw / 2.0)
+        goal.target_pose.pose.orientation.w = math.cos(yaw / 2.0)
+        
+        rospy.loginfo("[NavigationController] Sending goal: (%.2f, %.2f, yaw=%.2f) in frame '%s'", 
+                     x, y, yaw, frame_id)
+        
+        # Send goal
+        self.move_base_client.send_goal(goal)
+        
+        # Wait for result with timeout
+        finished_within_time = self.move_base_client.wait_for_result(rospy.Duration(timeout))
+        
+        if not finished_within_time:
+            rospy.logwarn("[NavigationController] Navigation timeout after %.1f seconds", timeout)
+            self.move_base_client.cancel_goal()
+            return False
+        
+        # Check result
+        state = self.move_base_client.get_state()
+        if state == actionlib.GoalStatus.SUCCEEDED:
+            rospy.loginfo("[NavigationController] Successfully reached goal (%.2f, %.2f)", x, y)
+            return True
+        else:
+            rospy.logwarn("[NavigationController] Navigation failed with state: %d", state)
+            return False
